@@ -270,6 +270,7 @@ void display(struct gamestate_t * state){
         }
         */
         printf("\033[2J\033[;H");
+        first_run = 0;
     }
 
     //backtrack to figure out where we were a moment ago based on direciton and our current position so we can update that location on the screen.
