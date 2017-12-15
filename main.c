@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <math.h>
+#include <limits.h>
+#include <string.h>
 
 #define UP 0
 #define LEFT 1
@@ -16,7 +18,7 @@
 static volatile int keepRunning = 1;
 
 void intHandler(int dummy) {
-        keepRunning = 0;
+    keepRunning = 0;
 }
 
 
@@ -31,6 +33,7 @@ struct config_t{
     long long max_steps; //max number of steps
     double gamma; //gamma for exported image
     int display; //whether we should display, or just generate heatmap.
+    int interactive; //whether we are interactive or not
 }; 
 
 struct gamestate_t{
@@ -88,6 +91,7 @@ void print_help(){
 }
 struct config_t * get_args(int argc, char * argv[]){
     unsigned int opt;
+    char * direction = NULL;
     struct config_t * config = malloc(sizeof(struct config_t));
     if (config == NULL){
         printf("%s line %d: out of memory\n", __FILE__, __LINE__);
@@ -102,7 +106,8 @@ struct config_t * get_args(int argc, char * argv[]){
     config->max_steps = 1000;
     config->gamma = 1;
     config->display = 1;
-    while ((opt = getopt(argc, argv, "w:h:x:y:d:t:s:g:bq")) != -1){
+    config->interactive = 0;
+    while ((opt = getopt(argc, argv, "w:h:x:y:d:t:s:g:bqi")) != -1){
         switch (opt){
             case 'w':
                 config->width = atoi(optarg);
@@ -117,7 +122,7 @@ struct config_t * get_args(int argc, char * argv[]){
                 config->ystart = atoi(optarg);
                 break;
             case 'd':
-                config->dstart = atoi(optarg);
+                direction = strdup(optarg);
                 break;
             case 't':
                 config->delay = (useconds_t)atoi(optarg);
@@ -129,17 +134,61 @@ struct config_t * get_args(int argc, char * argv[]){
                 config->gamma= atof(optarg);
                 break;
             case 'b':
-                config->display = 1;
+                config->display = 0;
+                break;
+            case 'i':
+                config->interactive = 1;
                 break;
             case 'q':
                 print_help();
-                exit(-1);
+                exit(0);
                 break;
             case '?':
                 print_help();
                 exit(-1);
                 break;
         }
+    }
+    if (config->xstart >= config->width || config->xstart < 0 || config->ystart >= config->height || config->ystart < 0){
+        fprintf(stderr, "Invalid starting position\n");
+        exit(-1);
+    }
+
+    if (config->width <1 || config->height< 1){
+        fprintf(stderr, "Invalid grid size\n");
+        exit(-1);
+    }
+
+    if (config->delay < 0){
+        fprintf(stderr, "Invalid delay\n");
+        exit(-1);
+    }
+
+    if (config->max_steps < 0){
+        fprintf(stderr, "Invalid steps\n");
+        exit(-1);
+    }
+
+
+    if (direction){
+        if (!strcasecmp(direction, "UP")){
+            config->dstart = UP;
+        } else if (!strcasecmp(direction, "DOWN")){
+            config->dstart = DOWN;
+        } else if (!strcasecmp(direction, "LEFT")){
+            config->dstart = LEFT;
+        } else if (!strcasecmp(direction, "RIGHT")){
+            config->dstart = RIGHT;
+        } else{
+            fprintf(stderr, "Invalid direction\n");
+            exit(-1);
+        }
+        free(direction);
+    }
+
+    if (config->interactive && !config->display){
+        fprintf(stderr, "Can't be in interactive mode and not display at the same time.\n");
+        exit(-1);
     }
 
     return config;
@@ -156,12 +205,17 @@ void free_gamestate(struct gamestate_t * state){
 }
 
 void step(struct gamestate_t * state){
+    //get pointers to members to shorten code later
     int * xpos = &(state->xpos);
     int * ypos = &(state->ypos);
     unsigned char * dir = &(state->dir);
+    //increment grid. It's black/whiteness is just whether it's white or black.
+    //If it's white or black, turn left or right respectively. Depends on int wrap around
     *dir += ((state->grid[*xpos][*ypos]++) & 0x1) ? 1 : -1;
+    //we only have four directions, mask for last two bits.
     *dir &= 3;
 
+    //Change position based on direction
     switch(*dir){
         case UP:
             *ypos += 1;
@@ -176,6 +230,7 @@ void step(struct gamestate_t * state){
             *xpos += 1;
             break;
     }
+    //wrap around the screen
     if (*ypos >= state->config->height){
         *ypos=0;
     }
@@ -189,6 +244,7 @@ void step(struct gamestate_t * state){
         *xpos = state->config->width-1;
     }
 
+    //record we made a step
     state->step++;
 
 
@@ -200,6 +256,7 @@ void display(struct gamestate_t * state){
     char * msg;
     static int first_run = 1;
 
+    //clear screen on first entry to this function
     if (first_run){
         first_run = 0;
         for (y = 0; y < state->config->height; y++){
@@ -209,6 +266,7 @@ void display(struct gamestate_t * state){
         }
     }
 
+    //backtrack to figure out where we were a moment ago based on direciton and our current position so we can update that location on the screen.
     xpos = state->xpos;
     ypos = state->ypos;
     switch (state->dir){
@@ -230,6 +288,7 @@ void display(struct gamestate_t * state){
             break;
     }
 
+    //wrap around for backtracking from the code above.
     if (ypos >= state->config->height){
         ypos=0;
     }
@@ -243,10 +302,12 @@ void display(struct gamestate_t * state){
         xpos = state->config->width-1;
     }
 
+    //update backtracked position
     printxy(xpos,ypos,(state->grid[xpos][ypos]&1) ? '*' : ' ');
 
-    //printf("%d %d %s         \n", state->xpos, state->ypos, msg);
+    //update current position
     printxy(state->xpos,state->ypos,(state->grid[state->xpos][state->ypos]&1) ? '0' : 'O');
+    //print step count
     printdxy(0, state->config->height, state->step);
     fflush(stdout);
 }
@@ -255,6 +316,8 @@ void save_heatmap(struct gamestate_t * state){
     int x;
     int y;
     unsigned long long max_val = 0;
+    unsigned long long min_val = ULLONG_MAX;
+    unsigned long long diff;
     FILE * f = fopen("output.ppm", "w");
 
     if (f == NULL){
@@ -266,13 +329,17 @@ void save_heatmap(struct gamestate_t * state){
             if (state->grid[x][y] > max_val){
                 max_val = state->grid[x][y];
             }
+            if (state->grid[x][y] < min_val){
+                min_val = state->grid[x][y];
+            }
         }
     }
+    diff = max_val - min_val;
 
     fprintf(f, "P2\n%d %d\n256\n", state->config->width, state->config->height);
     for (y = 0; y < state->config->height; y++){
         for (x = 0; x < state->config->width; x++){
-            int color = 256*powf((1.0f*state->grid[x][y])/(1.0f*max_val),state->config->gamma);
+            int color = 256*powf((1.0f*(state->grid[x][y]-min_val))/(1.0f*diff),state->config->gamma);
             color = color > 256? 256 : color;
             color = color < 0? 0: color;
             color = 256-color;
@@ -280,7 +347,7 @@ void save_heatmap(struct gamestate_t * state){
         }
         fprintf(f, "\n");
     }
-    
+
     fclose(f);
 }
 
@@ -296,7 +363,9 @@ int main (int argc, char * argv[]){
         if (config->display){
             display(state);
         }
-        //scanf("%c", &x);
+        if (config->interactive){
+            scanf("%c", &x);
+        }
         if (config->delay){
             usleep(config->delay);
         }
