@@ -7,12 +7,14 @@
 #define DOWN 2
 #define RIGHT 3
 #define printxy(x,y,c) printf("\033[%d;%dH%c", (x)+1, (y)+1, (c))
+#define printsxy(x,y,s) printf("\033[%d;%dH%s", (x)+1, (y)+1, (s))
 struct config_t{
     int width; //width of game board
     int height; // height of gameboard
     unsigned int xstart;//position of ant at beginning
     unsigned int ystart;
     unsigned int dstart;// direction of ant at beginning
+    useconds_t delay; //delay between each step
 }; 
 
 struct gamestate_t{
@@ -20,7 +22,8 @@ struct gamestate_t{
     int xpos; //current ant's x position
     int ypos; //current ant's y position
     unsigned char dir;//current direction
-    unsigned char ** grid ; //grid for the state
+    unsigned long long ** grid ; //grid for the state
+    long long step; //step number
 };
 
 struct gamestate_t * make_gamestate(struct config_t * config){
@@ -61,7 +64,7 @@ struct config_t * get_args(int argc, char * argv[]){
         printf("%s line %d: out of memory\n", __FILE__, __LINE__);
         exit(-1);
     }
-    while ((opt = getopt(argc, argv, "w:h:x:y:d:")) != -1){
+    while ((opt = getopt(argc, argv, "w:h:x:y:d:t:")) != -1){
         switch (opt){
             case 'w':
                 config->width = atoi(optarg);
@@ -77,6 +80,9 @@ struct config_t * get_args(int argc, char * argv[]){
                 break;
             case 'd':
                 config->dstart = atoi(optarg);
+                break;
+            case 't':
+                config->delay = (useconds_t)atoi(optarg);
                 break;
         }
     }
@@ -128,36 +134,63 @@ void step(struct gamestate_t * state){
         *xpos = state->config->width-1;
     }
 
+    state->step++;
+
 
 }
 
 void display(struct gamestate_t * state){
     unsigned int x,y;
+    int xpos,ypos;
     char * msg;
+    static int first_run = 1;
 
-    for (y = 0; y < state->config->height; y++){
-        for (x = 0; x < state->config->width; x++){
-            printxy(x,y,(state->grid[x][y]&1) ? '*' : ' ');
+    if (first_run){
+        first_run = 0;
+        for (y = 0; y < state->config->height; y++){
+            for (x = 0; x < state->config->width; x++){
+                printxy(x,y,' ');
+            }
         }
-        printf("\n");
     }
 
+    xpos = state->xpos;
+    ypos = state->ypos;
     switch (state->dir){
         case UP:
             msg="UP";
+            ypos -= 1;
             break;
         case DOWN:
             msg="DOWN";
+            ypos += 1;
             break;
         case LEFT:
             msg="LEFT";
+            xpos += 1;
             break;
         case RIGHT:
             msg="RIGHT";
+            xpos -= 1;
             break;
     }
 
-    printf("%d %d %s         \n", state->xpos, state->ypos, msg);
+    if (ypos >= state->config->height){
+        ypos=0;
+    }
+    if (ypos < 0){
+        ypos = state->config->height-1;
+    }
+    if (xpos >= state->config->width){
+        xpos=0;
+    }
+    if (xpos < 0){
+        xpos = state->config->width-1;
+    }
+
+    printxy(xpos,ypos,(state->grid[xpos][ypos]&1) ? '*' : ' ');
+
+    //printf("%d %d %s         \n", state->xpos, state->ypos, msg);
     printxy(state->xpos,state->ypos,(state->grid[state->xpos][state->ypos]&1) ? '0' : 'O');
 }
 
@@ -169,6 +202,7 @@ int main (int argc, char * argv[]){
     while (1){
         display(state);
         //scanf("%c", &x);
+        usleep(config->delay);
         step(state);
     }
 
