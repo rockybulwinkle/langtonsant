@@ -39,14 +39,14 @@ struct gamestate_t * make_gamestate(struct config_t * config){
     state->dir = config->dstart;
     state->config = config;
 
-    state->grid = calloc(config->width, sizeof(unsigned char*));
+    state->grid = calloc(config->width, sizeof(unsigned long long*));
     if (state->grid == NULL){
         printf("%s line %d: out of memory\n", __FILE__, __LINE__);
         exit(-1);
     }
 
     for (x = 0; x < config->width; x++){
-        state->grid[x] = calloc(config->height, sizeof(unsigned char));
+        state->grid[x] = calloc(config->height, sizeof(unsigned long long));
         if (state->grid[x] == NULL){
             printf("%s line %d: out of memory\n", __FILE__, __LINE__);
             exit(-1);
