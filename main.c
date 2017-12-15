@@ -1,13 +1,26 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <signal.h>
+#include <math.h>
 
 #define UP 0
 #define LEFT 1
 #define DOWN 2
 #define RIGHT 3
-#define printxy(x,y,c) printf("\033[%d;%dH%c", (x)+1, (y)+1, (c))
-#define printsxy(x,y,s) printf("\033[%d;%dH%s", (x)+1, (y)+1, (s))
+#define printxy(x,y,c) printf("\033[%d;%dH%c", (y)+1, (x)+1, (c))
+#define printdxy(x,y,d) printf("\033[%d;%dH%lld", (y)+1, (x)+1, (d))
+
+
+
+static volatile int keepRunning = 1;
+
+void intHandler(int dummy) {
+        keepRunning = 0;
+}
+
+
+
 struct config_t{
     int width; //width of game board
     int height; // height of gameboard
@@ -15,6 +28,9 @@ struct config_t{
     unsigned int ystart;
     unsigned int dstart;// direction of ant at beginning
     useconds_t delay; //delay between each step
+    long long max_steps; //max number of steps
+    double gamma; //gamma for exported image
+    int display; //whether we should display, or just generate heatmap.
 }; 
 
 struct gamestate_t{
@@ -56,7 +72,20 @@ struct gamestate_t * make_gamestate(struct config_t * config){
     return state;
 
 }
-
+void print_help(){
+    printf("Langton's Ant implementation\n");
+    printf("Options:\n");
+    printf("-w WIDTH\n");
+    printf("-h HEIGHT\n");
+    printf("-x XSTART\n");
+    printf("-y YSTART\n");
+    printf("-d START_DIRECTION\n");
+    printf("-t DELAY_USECS\n");
+    printf("-s MAX_STEPS\n");
+    printf("-g GAMMA\n");
+    printf("-b disables printing to console\n");
+    printf("-h print this help\n");
+}
 struct config_t * get_args(int argc, char * argv[]){
     unsigned int opt;
     struct config_t * config = malloc(sizeof(struct config_t));
@@ -64,7 +93,16 @@ struct config_t * get_args(int argc, char * argv[]){
         printf("%s line %d: out of memory\n", __FILE__, __LINE__);
         exit(-1);
     }
-    while ((opt = getopt(argc, argv, "w:h:x:y:d:t:")) != -1){
+    config->width = 10;
+    config->height = 10;
+    config->xstart = 5;
+    config->ystart = 5;
+    config->dstart = 2;
+    config->delay = 10000;
+    config->max_steps = 1000;
+    config->gamma = 1;
+    config->display = 1;
+    while ((opt = getopt(argc, argv, "w:h:x:y:d:t:s:g:bq")) != -1){
         switch (opt){
             case 'w':
                 config->width = atoi(optarg);
@@ -83,6 +121,23 @@ struct config_t * get_args(int argc, char * argv[]){
                 break;
             case 't':
                 config->delay = (useconds_t)atoi(optarg);
+                break;
+            case 's':
+                config->max_steps= atoll(optarg);
+                break;
+            case 'g':
+                config->gamma= atof(optarg);
+                break;
+            case 'b':
+                config->display = 1;
+                break;
+            case 'q':
+                print_help();
+                exit(-1);
+                break;
+            case '?':
+                print_help();
+                exit(-1);
                 break;
         }
     }
@@ -192,19 +247,63 @@ void display(struct gamestate_t * state){
 
     //printf("%d %d %s         \n", state->xpos, state->ypos, msg);
     printxy(state->xpos,state->ypos,(state->grid[state->xpos][state->ypos]&1) ? '0' : 'O');
+    printdxy(0, state->config->height, state->step);
+    fflush(stdout);
+}
+
+void save_heatmap(struct gamestate_t * state){
+    int x;
+    int y;
+    unsigned long long max_val = 0;
+    FILE * f = fopen("output.ppm", "w");
+
+    if (f == NULL){
+        printf("error saving file\n");
+        return;
+    }
+    for (x = 0; x < state->config->width; x++){
+        for (y = 0; y < state->config->height; y++){
+            if (state->grid[x][y] > max_val){
+                max_val = state->grid[x][y];
+            }
+        }
+    }
+
+    fprintf(f, "P2\n%d %d\n256\n", state->config->width, state->config->height);
+    for (y = 0; y < state->config->height; y++){
+        for (x = 0; x < state->config->width; x++){
+            int color = 256*powf((1.0f*state->grid[x][y])/(1.0f*max_val),state->config->gamma);
+            color = color > 256? 256 : color;
+            color = color < 0? 0: color;
+            color = 256-color;
+            fprintf(f, "%d ", color);
+        }
+        fprintf(f, "\n");
+    }
+    
+    fclose(f);
 }
 
 int main (int argc, char * argv[]){
+    long long i;
     char x;
     struct config_t * config = get_args(argc, argv);
     struct gamestate_t * state = make_gamestate(config);
 
-    while (1){
-        display(state);
+    signal(SIGINT, intHandler);
+
+    for (i = 0; (i < config->max_steps) && keepRunning; i++){
+        if (config->display){
+            display(state);
+        }
         //scanf("%c", &x);
-        usleep(config->delay);
+        if (config->delay){
+            usleep(config->delay);
+        }
         step(state);
     }
+
+    save_heatmap(state);
 
     free_gamestate(state);
     return 0;
