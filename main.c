@@ -254,9 +254,7 @@ void step(struct gamestate_t * state){
 }
 
 void display(struct gamestate_t * state){
-    unsigned int x,y;
     int xpos,ypos;
-    char * msg;
     static int first_run = 1;
 
     //clear screen on first entry to this function
@@ -278,19 +276,15 @@ void display(struct gamestate_t * state){
     ypos = state->ypos;
     switch (state->dir){
         case UP:
-            msg="UP";
             ypos -= 1;
             break;
         case DOWN:
-            msg="DOWN";
             ypos += 1;
             break;
         case LEFT:
-            msg="LEFT";
             xpos += 1;
             break;
         case RIGHT:
-            msg="RIGHT";
             xpos -= 1;
             break;
     }
