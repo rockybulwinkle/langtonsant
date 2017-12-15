@@ -19,6 +19,8 @@ static volatile int keepRunning = 1;
 
 void intHandler(int dummy) {
     keepRunning = 0;
+    printf("\n");
+    exit(-1);
 }
 
 
@@ -76,18 +78,19 @@ struct gamestate_t * make_gamestate(struct config_t * config){
 
 }
 void print_help(){
-    printf("Langton's Ant implementation\n");
+    printf("Langton's Ant\n");
     printf("Options:\n");
     printf("-w WIDTH\n");
     printf("-h HEIGHT\n");
     printf("-x XSTART\n");
     printf("-y YSTART\n");
-    printf("-d START_DIRECTION\n");
+    printf("-d starting direction, either up, down, left, or right\n");
     printf("-t DELAY_USECS\n");
     printf("-s MAX_STEPS\n");
     printf("-g GAMMA\n");
     printf("-b disables printing to console\n");
-    printf("-h print this help\n");
+    printf("-i interactive mode\n");
+    printf("-q print this help (yeah i know it's normally -h but I already used that option >_<)\n");
 }
 struct config_t * get_args(int argc, char * argv[]){
     unsigned int opt;
@@ -258,12 +261,15 @@ void display(struct gamestate_t * state){
 
     //clear screen on first entry to this function
     if (first_run){
+        /*
         first_run = 0;
         for (y = 0; y < state->config->height; y++){
             for (x = 0; x < state->config->width; x++){
                 printxy(x,y,' ');
             }
         }
+        */
+        printf("\033[2J\033[;H");
     }
 
     //backtrack to figure out where we were a moment ago based on direciton and our current position so we can update that location on the screen.
