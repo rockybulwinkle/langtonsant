@@ -18,9 +18,15 @@
 static volatile int keepRunning = 1;
 
 void intHandler(int dummy) {
-    keepRunning = 0;
-    printf("\n");
-    exit(-1);
+    keepRunning -= 1;
+    if (keepRunning == 0){
+        printf("Killed, saving heatmap\n");
+    } else if (keepRunning == -1){
+        printf("hit Ctrl+C again to kill saving heatmap\n");
+    } else if (keepRunning == -2){
+        printf("Killing heatmap\n");
+        exit(-1);
+    }
 }
 
 
